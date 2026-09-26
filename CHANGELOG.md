@@ -39,4 +39,4 @@
 风控治理、Agent 工具桥接、一键接入卡片等），变更记录从略。自 v2.0.0 起项目托管于
 GitHub，此后所有版本变更均记录在本文件。
 
-[2.0.0]: https://github.com/workbuddy-agent/deepseek-local-api/releases/tag/v2.0.0
+[2.0.0]: https://github.com/shuytre/deepseek-local-api/releases/tag/v2.0.0
