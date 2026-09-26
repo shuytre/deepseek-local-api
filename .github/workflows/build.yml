@@ -8,6 +8,9 @@ on:
   push:
     branches: [ main ]
     tags: [ 'v*' ]
+    # 失败诊断日志（Report build failure log 步骤自动回传）不触发新构建，避免循环
+    paths-ignore:
+      - 'ci-error.log'
   workflow_dispatch:
 
 jobs:
