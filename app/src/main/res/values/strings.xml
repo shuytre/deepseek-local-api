@@ -16,11 +16,13 @@
     <string name="api_key_title">API Key（用于接入编程工具）</string>
     <string name="copy">复制</string>
     <string name="copied">已复制</string>
-    <string name="model_title">对话模式</string>
-    <string name="model_flash">快速模式</string>
-    <string name="model_flash_desc">V4.1 Flash · 快速响应</string>
-    <string name="model_pro">专业模式</string>
-    <string name="model_pro_desc">深度思考 · 专家推理</string>
+    <string name="model_title">模型</string>
+    <string name="model_unified">DeepSeek V4.1 Flash</string>
+    <string name="model_unified_info">官方已把原 V4 Flash / V4 Flash Vision / V4 Pro 全部整合到 V4.1 Flash，本应用现在只有这一个模型。\n\n· 深度思考：默认开启，对话页开关可关。\n· 识图：默认开启，发图片即可让模型看图。\n\n两者都是能力开关，不再需要换模型。旧模型名（deepseek-v4-flash / deepseek-v4-pro / deepseek-flash）仍可填，都会被归到 V4.1 Flash。</string>
+    <string name="model_flash">DeepSeek V4.1 Flash</string>
+    <string name="model_flash_desc">唯一模型 · 深度思考 + 识图</string>
+    <string name="model_pro">DeepSeek V4.1 Flash（旧名兼容）</string>
+    <string name="model_pro_desc">原 V4 Pro 已整合进 V4.1 Flash</string>
     <string name="lan_switch">局域网访问（同一 WiFi 其他设备可连）</string>
     <string name="account_title">DeepSeek 账号</string>
     <string name="account_logged_in">已登录</string>
@@ -93,15 +95,17 @@
     <string name="settings_help_1_title">1. 如何获取登录态并启动服务</string>
     <string name="settings_help_1_body">请在“首页”点击“登录 DeepSeek”，在应用内置浏览器中完成登录，登录成功后会自动提取 Token。若自动提取失败，可在登录页打开“开发者工具”面板查看 localStorage，或点“手动输入 Token / Cookie”粘贴登录态。登录成功后回到首页点击“启动服务”。</string>
     <string name="settings_help_2_title">2. 在其他工具中调用本 API</string>
-    <string name="settings_help_2_body">在支持自定义 Base URL 和 API Key 的编程工具（如 Cursor、Codex、Cherry Studio 等）中：\n\nBase URL：就用首页显示的 http://127.0.0.1:8080/v1（已带 /v1 后缀，别再在后面加 /chat/completions，工具会自己拼上）\nAPI Key：首页显示的 sk-…\n模型：deepseek-v4.1-flash（快速）或 deepseek-v4-pro（专业·深度思考）\n\n注意：手机上的工具请用 127.0.0.1；同一 WiFi 下的电脑可开启“局域网访问”后用 http://手机IP:8080/v1。</string>
+    <string name="settings_help_2_body">在支持自定义 Base URL 和 API Key 的编程工具（如 Cursor、Codex、Cherry Studio 等）中：\n\nBase URL：就用首页显示的 http://127.0.0.1:8080/v1（已带 /v1 后缀，别再在后面加 /chat/completions，工具会自己拼上）\nAPI Key：首页显示的 sk-…\n模型：deepseek-v4.1-flash（唯一模型，深度思考与识图默认开启）\n\n注意：手机上的工具请用 127.0.0.1；同一 WiFi 下的电脑可开启“局域网访问”后用 http://手机IP:8080/v1。</string>
     <string name="settings_help_3_title">3. 模型选择说明</string>
-    <string name="settings_help_3_body">快速模式对应 DeepSeek V4.1 Flash（默认，2026-09 官方新模型，性能全面超越上代旗舰），专业模式对应深度思考（原 V4 Pro 已由官方下线，请求自动路由到 V4.1 Flash）。在首页“对话模式”中选择。编程工具里也可直接通过 model 参数指定，旧模型名 deepseek-v4-flash 仍兼容可用。</string>
+    <string name="settings_help_3_body">现在只有一个模型：DeepSeek V4.1 Flash。官方已把原 V4 Flash / V4 Flash Vision / V4 Pro 全部整合进去，因此不再有“快速 / 专业”两种模式。深度思考与识图是独立开关（默认都开）：对话页可关深度思考，设置页可关识图。编程工具里填 deepseek-v4-flash、deepseek-v4-pro 等旧名，都会被归到 V4.1 Flash，行为一致。</string>
     <string name="settings_help_5_title">5. Agent 接入与风控保护（Operit / DeepSeek Harness）</string>
-    <string name="settings_help_5_body">【一键接入】先在「首页」下方的「接入 Agent 工具」卡片复制。卡片上每个字段（API端点、API Key）右侧都有独立「复制」按钮，要哪个复制哪个；点「统一复制」会一次复制两行：\nAPI端点：http://127.0.0.1:8080/v1\nAPI key：sk-…\n\n【接入 Operit】Operit 是手机上的 Agent 工具。新建一个 OpenAI 兼容的 Provider，Base URL（API端点）用卡片复制好的地址，API Key 用卡片复制的 sk-…，模型选 deepseek-v4-pro（专业·深度思考）或 deepseek-v4.1-flash（快速）。保持「Agent 工具桥接」开关开启，Operit 发来的 tools 定义会被自动桥接为 tool_calls；MCP 工具集会自动压缩、工具名写错会自动模糊修复、多轮 tool 往返格式稳定不崩坏、超长历史自动掐中间保两头，自主开发长任务也能稳定跑。\n\n【接入 DeepSeek Harness（电脑）】Harness 是 DeepSeek 官方的 Agent 框架，支持 OpenAI Chat Completions 协议。电脑上跑：npx @deepseek-ai/dsh web → 浏览器打开 http://127.0.0.1:3080 → 设置 → 模型 → 添加自定义提供方（Add custom provider）：API 协议选 OpenAI Chat Completions，Base URL 填手机「局域网地址」（首页卡片里显示的 API端点），API Key 填 sk-…，模型写 deepseek-v4-pro / deepseek-v4.1-flash。全程图形化，不需要手动编辑任何配置文件；需要手机与电脑连同一 WiFi，并在首页开启「局域网访问」+ 启动服务。并且 Harness 对长静默深度思考会自动心跳保活，不会误判超时。\n\n【风控保护】本应用把所有对 DeepSeek 的请求串行化，加真人节奏间隔，并按「30 次/小时、300 次/天」滚动窗口限额；连续空回复或收到限流码会立即进入 15/30/60 分钟递增冷却（双账号池自动轮换），保护账号。想连续多天稳定使用：保持默认限额、Agent 并发设 1、触发冷却时耐心等自然结束、一次任务尽量在同一对话线程里完成。\n\n【多账号池】首页登录按钮旁三角形菜单 →「组成多账号池（再登录一个）」可登录第 2 个账号（最多 2 个）。某账号触发风控冷却时自动摘下并切到另一账号继续服务；会话在切换时自动作废重建、上下文不丢。频率预算为两账号合计共享，不放大请求总量。</string>
+    <string name="settings_help_5_body">【一键接入】先在「首页」下方的「接入 Agent 工具」卡片复制。卡片上每个字段（API端点、API Key）右侧都有独立「复制」按钮，要哪个复制哪个；点「统一复制」会一次复制两行：\nAPI端点：http://127.0.0.1:8080/v1\nAPI key：sk-…\n\n【接入 Operit】Operit 是手机上的 Agent 工具。新建一个 OpenAI 兼容的 Provider，Base URL（API端点）用卡片复制好的地址，API Key 用卡片复制的 sk-…，模型填 deepseek-v4.1-flash。默认不接入任何 Agent（「Agent 工具桥接」关闭，不会往请求里注入工具协议文字）；需要让 Operit 走 function calling 时，到设置页手动打开该开关，此后 Operit 发来的 tools 定义会被桥接为 tool_calls；MCP 工具集会自动压缩、工具名写错会自动模糊修复、多轮 tool 往返格式稳定不崩坏、超长历史自动掐中间保两头，自主开发长任务也能稳定跑。\n\n【接入 DeepSeek Harness（电脑）】Harness 是 DeepSeek 官方的 Agent 框架，支持 OpenAI Chat Completions 协议。电脑上跑：npx @deepseek-ai/dsh web → 浏览器打开 http://127.0.0.1:3080 → 设置 → 模型 → 添加自定义提供方（Add custom provider）：API 协议选 OpenAI Chat Completions，Base URL 填手机「局域网地址」（首页卡片里显示的 API端点），API Key 填 sk-…，模型写 deepseek-v4.1-flash。全程图形化，不需要手动编辑任何配置文件；需要手机与电脑连同一 WiFi，并在首页开启「局域网访问」+ 启动服务。并且 Harness 对长静默深度思考会自动心跳保活，不会误判超时。\n\n【风控保护】本应用把所有对 DeepSeek 的请求串行化，加真人节奏间隔，并按「30 次/小时、300 次/天」滚动窗口限额；连续空回复或收到限流码会立即进入 15/30/60 分钟递增冷却（双账号池自动轮换），保护账号。想连续多天稳定使用：保持默认限额、Agent 并发设 1、触发冷却时耐心等自然结束、一次任务尽量在同一对话线程里完成。\n\n【多账号池】首页登录按钮旁三角形菜单 →「组成多账号池（再登录一个）」可登录第 2 个账号（最多 2 个）。某账号触发风控冷却时自动摘下并切到另一账号继续服务；会话在切换时自动作废重建、上下文不丢。频率预算为两账号合计共享，不放大请求总量。</string>
     <string name="settings_help_4_title">4. 如何在浏览器获取 Token</string>
     <string name="settings_help_4_body">电脑/手机浏览器打开 chat.deepseek.com 并登录，发起一次对话后：\n\n· 方式一：按 F12 打开开发者工具 → Application → Local Storage → https://chat.deepseek.com → 找到 userToken 项，复制其 value 值。\n· 方式二：Network 标签，找到任意请求，复制 Authorization 请求头的 Bearer 值（去掉 Bearer 前缀）。\n\n把复制到的值粘贴到“手动输入 Token/Cookie”即可。</string>
     <string name="settings_about_title">关于</string>
-    <string name="settings_about_body">DeepSeek Local API v2.0.0\n已适配 DeepSeek V4.1 Flash（2026-09 官方新模型）。在遵守 DeepSeek 服务条款的前提下，将网页版免费对话转为本地 OpenAI 兼容 API。逆向接口不稳定，请勿商用。</string>
+    <string name="settings_about_body">DeepSeek Local API v2.1.0\n模型已整合为唯一的 DeepSeek V4.1 Flash，深度思考与识图均为默认开启的能力开关。在遵守 DeepSeek 服务条款的前提下，将网页版免费对话转为本地 OpenAI 兼容 API。逆向接口不稳定，请勿商用。</string>
+    <string name="settings_vision">识图（发送图片给模型看）</string>
+    <string name="settings_vision_desc">开启后，请求里带的图片（base64 或图片链接）会上传到网页端并由模型读取；关闭则忽略图片。带图请求会自动关闭联网搜索。</string>
 
     <!-- 设置 / 优化与测试 -->
     <string name="settings_optimize_api">优化 API 调用</string>

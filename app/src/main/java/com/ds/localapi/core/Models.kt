@@ -22,28 +22,27 @@ object Protocol {
     const val POW_TARGET_PATH = "/api/v0/chat/completion"
 
     /**
-     * completion 请求体里用于选择模型的字段名。
+     * 模型已整合（v2.1.0）。
      *
-     * 网页端「快速模式 / 专业模式」不是通过 model 字段切换，而是用 model_type：
-     *  - 专业模式（专家）     -> model_type = "expert"，同时开启思考
-     *  - 快速模式（V4.1 Flash）-> model_type = "default"
-     *
-     * 参考 deepseek-reverse-api：误发 model 字段会被官方忽略，回落到旧版默认模型。
+     * 2026-09-09 起官方把原 V4 Flash / V4 Flash Vision / V4 Pro 的请求统一路由到
+     * V4.1 Flash，网页端不再存在「快速 / 专家」两套模型，model_type 恒为 default。
+     * 深度思考（thinking_enabled）与识图（ref_file_ids）改为独立开关，
+     * 不再与模型选择绑定 —— 也就是说：只有一个模型，且它同时会思考、会看图。
      */
     const val MODEL_TYPE_FIELD = "model_type"
-    const val MODEL_TYPE_EXPERT = "expert"
     const val MODEL_TYPE_DEFAULT = "default"
 
     // OpenAI 兼容对外暴露的模型 id（本地 /v1/models 用）。
     //
-    // 2026-09-09 官方发布 DeepSeek V4.1 Flash（552B MoE，Causal-Encoder-Decoder 新架构），
-    // 网页端「快速模式」底层已切换为 V4.1 Flash；旧 V4 Flash / V4 Flash Vision /
-    // V4 Pro 请求均由官方服务端路由到 V4.1 Flash。网页端协议字段（model_type）未变，
-    // 因此本客户端仅需更新对外模型目录与默认名，无需改动请求结构。
-    const val MODEL_FLASH = "deepseek-v4.1-flash"          // 新默认（快速模式）
+    // 唯一真实模型：deepseek-v4.1-flash。其余 id 仅作历史/别名兼容，
+    // 服务端都会落到 V4.1 Flash，行为完全一致。
+    const val MODEL_FLASH = "deepseek-v4.1-flash"          // 唯一模型（深度思考 + 识图）
     const val MODEL_FLASH_OFFICIAL = "deepseek-flash"      // 官方 API 同名别名
-    const val MODEL_FLASH_LEGACY = "deepseek-v4-flash"     // 上一代旧名（官方路由到 V4.1 Flash）
-    const val MODEL_PRO = "deepseek-v4-pro"                // 专家模式（原 V4 Pro，官方路由到 V4.1 Flash）
+    const val MODEL_FLASH_LEGACY = "deepseek-v4-flash"     // 上一代旧名（已整合）
+    const val MODEL_PRO = "deepseek-v4-pro"                // 旧名兼容（原 V4 Pro，已整合）
+
+    /** 文件上传（识图 / 读文档）：multipart 上传后拿到 file_id，放进 ref_file_ids。 */
+    const val PATH_FILE_UPLOAD = "/file/upload"
 }
 
 /** PoW challenge returned by `/chat/create_pow_challenge`. */
@@ -78,14 +77,14 @@ data class ChatResult(
     val thinking: String
 )
 
-/** 本地 OpenAI 兼容服务对外暴露的模型。 */
+/** 本地 OpenAI 兼容服务对外暴露的模型（v2.1.0 起只有一个真实模型）。 */
 object ModelCatalog {
-    // 快速模式（默认，V4.1 Flash）/ 专家模式（深度思考）
-    val FLASH = Protocol.MODEL_FLASH
+    /** 唯一模型。 */
+    val UNIFIED = Protocol.MODEL_FLASH
+    val DEFAULT = UNIFIED
+    val FLASH = UNIFIED
+    /** 旧名兼容：指向同一模型，不再代表「专家模式」。 */
     val PRO = Protocol.MODEL_PRO
-    val DEFAULT = FLASH
-
-    fun isPro(model: String?): Boolean = model?.contains("pro") == true || model?.contains("expert") == true
 
     fun list(): List<Map<String, Any>> {
         fun m(id: String, desc: String) = mapOf(
@@ -96,10 +95,10 @@ object ModelCatalog {
             "description" to desc
         )
         return listOf(
-            m(FLASH, "快速模式 · DeepSeek V4.1 Flash（默认，性能全面超越上代旗舰）"),
-            m(Protocol.MODEL_FLASH_OFFICIAL, "DeepSeek V4.1 Flash · 官方 API 同名别名，等价 ${Protocol.MODEL_FLASH}"),
-            m(Protocol.MODEL_FLASH_LEGACY, "DeepSeek V4 Flash · 旧名兼容，已由官方路由到 V4.1 Flash"),
-            m(PRO, "专家模式 · 深度思考（原 V4 Pro，官方已路由到 V4.1 Flash）")
+            m(UNIFIED, "DeepSeek V4.1 Flash · 唯一模型（默认开启深度思考，支持识图）"),
+            m(Protocol.MODEL_FLASH_OFFICIAL, "别名，等价于 ${Protocol.MODEL_FLASH}"),
+            m(Protocol.MODEL_FLASH_LEGACY, "旧名兼容，等价于 ${Protocol.MODEL_FLASH}"),
+            m(PRO, "旧名兼容（原 V4 Pro 已整合，等价于 ${Protocol.MODEL_FLASH}）")
         )
     }
 }

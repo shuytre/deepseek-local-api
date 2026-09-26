@@ -1,6 +1,8 @@
 package com.ds.localapi.core
 
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -69,14 +71,16 @@ class DeepSeekClient(private val settings: Settings) {
         body: JSONObject?,
         powHeader: String?,
         profile: BrowserFingerprint.Profile,
-        refererSessionId: String? = null
+        refererSessionId: String? = null,
+        multipart: MultipartBody? = null
     ): Request {
         val url = Protocol.DS_BASE_URL + Protocol.DS_API_PREFIX + path
         val builder = Request.Builder().url(url)
         builder.header("Host", "chat.deepseek.com")
         builder.header("User-Agent", profile.userAgent)
         builder.header("Accept", profile.accept)
-        builder.header("Content-Type", "application/json")
+        // multipart 自带 boundary，不能手动覆盖 Content-Type
+        if (multipart == null) builder.header("Content-Type", "application/json")
         builder.header("Authorization", "Bearer $token")
         // 网页端是 Bearer + Cookie 双重携带（浏览器登录后每个请求都带 userToken cookie）。
         builder.header("Cookie", "userToken=$token")
@@ -101,13 +105,62 @@ class DeepSeekClient(private val settings: Settings) {
         if (!powHeader.isNullOrEmpty()) {
             builder.header("x-ds-pow-response", powHeader)
         }
-        if (method == "POST") {
+        if (multipart != null) {
+            builder.post(multipart)
+        } else if (method == "POST") {
             val payload = body?.toString() ?: "{}"
             builder.post(payload.toRequestBody(jsonMedia))
         } else {
             builder.get()
         }
         return builder.build()
+    }
+
+    /**
+     * 上传文件（图片 / 文档）到网页端，返回 file_id —— 放进 completion 的 ref_file_ids 即可识图。
+     *
+     * 走与浏览器一致的 multipart/form-data（字段名 file）。官方响应结构多路径兼容：
+     * data.biz_data.id → data.id → data.file_id → id。
+     * 解析失败只记日志并返回 null，绝不让识图失败连带整段对话挂掉。
+     */
+    fun uploadFile(slot: Int, bytes: ByteArray, filename: String, mime: String): String? {
+        val token = accountPool.tokenAt(slot)
+        if (token.isEmpty()) return null
+        val profile = profileFor(slot)
+        val sessionId = accountPool.sessionIdAt(slot)
+        val mediaType = mime.toMediaTypeOrNull() ?: "application/octet-stream".toMediaType()
+        val body = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("file", filename, bytes.toRequestBody(mediaType))
+            .build()
+        val req = buildRequest(token, "POST", Protocol.PATH_FILE_UPLOAD, null, null, profile, sessionId, body)
+        return try {
+            client.newCall(req).execute().use { resp ->
+                val raw = resp.body?.string().orEmpty()
+                if (resp.code != 200) {
+                    EventLog.log("UPLOAD", "上传失败 HTTP ${resp.code}：${raw.take(200)}")
+                    null
+                } else {
+                    val root = JSONObject(raw)
+                    val data = root.optJSONObject("data")
+                    val biz = data?.optJSONObject("biz_data")
+                    val id = biz?.optString("id", null)?.takeIf { it.isNotEmpty() }
+                        ?: data?.optString("id", null)?.takeIf { it.isNotEmpty() }
+                        ?: data?.optString("file_id", null)?.takeIf { it.isNotEmpty() }
+                        ?: root.optString("id", null)?.takeIf { it.isNotEmpty() }
+                    if (id.isNullOrEmpty()) {
+                        EventLog.log("UPLOAD", "未能从响应解析 file_id：${raw.take(300)}")
+                        null
+                    } else {
+                        EventLog.log("UPLOAD", "上传成功 $filename -> $id")
+                        id
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            EventLog.log("UPLOAD", "上传异常：${e.message}")
+            null
+        }
     }
 
     /**
@@ -217,6 +270,7 @@ class DeepSeekClient(private val settings: Settings) {
         thinking: Boolean,
         search: Boolean,
         model: String,
+        refFileIds: List<String> = emptyList(),
         onEvent: (SseEvent) -> Unit
     ) {
         rateGovernor.withSlot {
@@ -237,7 +291,7 @@ class DeepSeekClient(private val settings: Settings) {
                                 "冷却会自动结束并恢复服务，无需重新登录。"
                     )
                 }
-                val result = chatOnce(slot, token, prompt, thinking, search, onEvent)
+                val result = chatOnce(slot, token, prompt, thinking, search, refFileIds, onEvent)
                 if (!result.isEmpty && !result.rateLimited) {
                     rateGovernor.onSuccess(slot)
                     return@withSlot
@@ -288,6 +342,7 @@ class DeepSeekClient(private val settings: Settings) {
         prompt: String,
         thinking: Boolean,
         search: Boolean,
+        refFileIds: List<String>,
         onEvent: (SseEvent) -> Unit
     ): ParseResult {
         val profile = profileFor(slot)
@@ -328,11 +383,15 @@ class DeepSeekClient(private val settings: Settings) {
         // 参考实现：恒为 null。上下文每次全量随 prompt 重注入，不依赖服务端消息链。
         payload.put("parent_message_id", JSONObject.NULL)
         payload.put("prompt", prompt)
-        payload.put("ref_file_ids", JSONArray())
+        // 识图 / 读文档：上传后得到的 file_id 列表（官方要求带文件时关闭联网搜索）。
+        val files = JSONArray()
+        refFileIds.forEach { files.put(it) }
+        payload.put("ref_file_ids", files)
+        val effectiveSearch = if (refFileIds.isNotEmpty()) false else search
         payload.put("thinking_enabled", thinking)
-        payload.put("search_enabled", search)
-        // 网页端用 model_type 切换快速/专业模式，而非 model 字段。
-        payload.put(Protocol.MODEL_TYPE_FIELD, if (thinking) Protocol.MODEL_TYPE_EXPERT else Protocol.MODEL_TYPE_DEFAULT)
+        payload.put("search_enabled", effectiveSearch)
+        // 模型已整合（v2.1.0）：恒为 V4.1 Flash。深度思考是独立开关，不再切换模型。
+        payload.put(Protocol.MODEL_TYPE_FIELD, Protocol.MODEL_TYPE_DEFAULT)
 
         val req = buildRequest(token, "POST", Protocol.PATH_COMPLETION, payload, powHeader, profile, sid)
         val call = client.newCall(req)

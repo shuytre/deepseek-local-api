@@ -30,6 +30,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.ds.localapi.core.EventLog
 import com.ds.localapi.core.ModelCatalog
+import com.ds.localapi.core.Protocol
 import com.ds.localapi.core.RateGovernor
 import com.ds.localapi.store.AccountPool
 import com.ds.localapi.databinding.ActivityMainBinding
@@ -175,8 +176,13 @@ class MainActivity : AppCompatActivity() {
     private fun setupHome() {
         updateModelChips(settings.model)
 
-        homeBinding.chipFlash.setOnClickListener { settings.model = ModelCatalog.FLASH; updateModelChips(ModelCatalog.FLASH) }
-        homeBinding.chipPro.setOnClickListener { settings.model = ModelCatalog.PRO; updateModelChips(ModelCatalog.PRO) }
+        // 模型已整合：只有 DeepSeek V4.1 Flash 一个模型，隐藏旧「专业模式」入口，
+        // 点击 chip 也不再切换模型（能力开关：深度思考 / 识图）。
+        homeBinding.chipFlash.text = getString(R.string.model_unified)
+        homeBinding.chipFlash.isSelected = true
+        homeBinding.chipPro.visibility = android.view.View.GONE
+        homeBinding.chipFlash.setOnClickListener { showModelInfoDialog() }
+        homeBinding.chipPro.setOnClickListener { showModelInfoDialog() }
 
         homeBinding.switchLan.isChecked = settings.lanEnabled
         homeBinding.switchLan.setOnCheckedChangeListener { _, checked ->
@@ -258,12 +264,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateModelChips(model: String) {
-        val usePro = ModelCatalog.isPro(model)
-        homeBinding.chipFlash.background = if (!usePro)
-            getDrawable(R.drawable.bg_model_chip) else null
-        homeBinding.chipPro.background = if (usePro)
-            getDrawable(R.drawable.bg_model_chip) else null
-        chatBinding.txtChatModel.text = if (usePro) getString(R.string.model_pro) else getString(R.string.model_flash)
+        // 模型已整合，无论外部传什么模型名都归一到 V4.1 Flash
+        settings.model = ModelCatalog.UNIFIED
+        homeBinding.chipFlash.text = getString(R.string.model_unified)
+        homeBinding.chipFlash.isSelected = true
+        homeBinding.chipPro.visibility = android.view.View.GONE
+        chatBinding.txtChatModel.text = getString(R.string.model_unified)
+    }
+
+    /** 点击模型 chip：说明当前唯一模型与两项能力开关。 */
+    private fun showModelInfoDialog() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.model_unified)
+            .setMessage(R.string.model_unified_info)
+            .setPositiveButton(R.string.manual_cancel, null)
+            .show()
     }
 
     /** 登录按钮旁的三角形菜单：手动输入 + 多账号池管理。 */
@@ -624,6 +639,12 @@ class MainActivity : AppCompatActivity() {
 
         // API 调用测试：如实测试本地服务
         settingsBinding.btnApiTest.setOnClickListener { showApiTestDialog() }
+
+        // 识图：消息里的图片上传后由模型读取（默认开启）
+        settingsBinding.switchVision.isChecked = settings.visionEnabled
+        settingsBinding.switchVision.setOnCheckedChangeListener { _, checked ->
+            settings.visionEnabled = checked
+        }
     }
 
     // ---------- 风控保护 ----------
@@ -705,7 +726,7 @@ class MainActivity : AppCompatActivity() {
     // ---------- API 调用测试 ----------
 
     private fun showApiTestDialog() {
-        val models = arrayOf(ModelCatalog.FLASH, ModelCatalog.PRO)
+        val models = arrayOf(ModelCatalog.UNIFIED, Protocol.MODEL_FLASH_OFFICIAL, Protocol.MODEL_FLASH_LEGACY, ModelCatalog.PRO)
 
         val promptInput = EditText(this).apply {
             hint = getString(R.string.test_prompt_label)

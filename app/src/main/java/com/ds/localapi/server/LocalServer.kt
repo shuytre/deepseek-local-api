@@ -103,6 +103,14 @@ class LocalServer(
 
         val (effectiveModel, thinking, search) = resolveModel(model, forcedThinking)
 
+        // 识图：消息里的图片先上传到网页端，拿到 file_id 供 completion 引用。
+        // 上传失败不阻断对话（退化为纯文本请求），只在事件日志里留痕。
+        val images = if (settings.visionEnabled) collectImages(messages) else emptyList()
+        val refFileIds = if (images.isEmpty()) emptyList() else uploadImages(images)
+        if (images.isNotEmpty()) {
+            EventLog.log("HTTP", "识图：共 ${images.size} 张图片，成功上传 ${refFileIds.size} 张")
+        }
+
         // 上下文每次全量注入（对齐参考实现）：DeepSeekClient 复用每账号长效会话，
         // 不依赖服务端会话记忆，多 agent 任务也不会互相污染。
         val prompt = buildPrompt(messages, toolSpecs, toolChoice)
@@ -112,26 +120,123 @@ class LocalServer(
         val created = System.currentTimeMillis() / 1000
 
         if (stream) {
-            return streamResponse(token, prompt, effectiveModel, thinking, search, chatId, created, toolSpecs, toolNames, promptLen)
+            return streamResponse(token, prompt, effectiveModel, thinking, search, chatId, created, toolSpecs, toolNames, promptLen, refFileIds)
         }
 
-        return nonStreamResponse(token, prompt, effectiveModel, thinking, search, chatId, created, toolNames, promptLen)
+        return nonStreamResponse(token, prompt, effectiveModel, thinking, search, chatId, created, toolNames, promptLen, refFileIds)
     }
 
     /**
-     * 将请求模型名换算为实际下发给 DeepSeek 网页端的模型、是否思考、是否联网。
-     * - 专家模式（深度思考）：应用内选择或请求模型含 pro/expert 时启用，同时开启思考。
-     *   （原 V4 Pro 已由官方下线并路由到 V4.1 Flash，网页端 expert 通道保留）
-     * - 快速模式（V4.1 Flash）：默认。
+     * 模型已整合（v2.1.0）：只有 V4.1 Flash 一个模型，不再区分快速 / 专家。
+     * - 深度思考：默认开启（应用内开关 [Settings.thinkingEnabled]），请求体传 thinking 可覆盖。
+     * - 识图：由 ref_file_ids 承载（见 [collectImages]），与模型选择无关。
      */
     private fun resolveModel(model: String, forcedThinking: Boolean?): Triple<String, Boolean, Boolean> {
         val m = model.lowercase()
-        val pro = settings.expertMode || m.contains("v4-pro") || m.contains("expert")
-        // 用户显式传 thinking 时优先；否则按模型推断（专业模式自动思考）
-        val thinking = forcedThinking ?: (pro || m.contains("reasoner") || m.contains("r1"))
+        val thinking = forcedThinking ?: settings.thinkingEnabled
         val search = m.contains("search")
-        val effective = if (pro) ModelCatalog.PRO else if (settings.model.isNotBlank()) settings.model else ModelCatalog.FLASH
-        return Triple(effective, thinking, search)
+        return Triple(ModelCatalog.UNIFIED, thinking, search)
+    }
+
+    // ---------------- 识图：图片解析 + 上传 ----------------
+
+    private data class PendingImage(val bytes: ByteArray, val filename: String, val mime: String)
+
+    /** 单张图片上限（网页端过大文件会被拒，超限直接跳过并记日志）。 */
+    private val maxImageBytes = 8 * 1024 * 1024
+
+    /**
+     * 从 OpenAI 格式消息里抽取图片，支持三种输入形态：
+     *  - {"type":"image_url","image_url":{"url":"data:image/png;base64,…"}}
+     *  - {"type":"image_url","image_url":{"url":"https://…"}}（先下载再上传）
+     *  - {"type":"file","file":{"file_data":"base64","filename":"a.png"}}
+     */
+    private fun collectImages(messages: JSONArray): List<PendingImage> {
+        val out = mutableListOf<PendingImage>()
+        for (i in 0 until messages.length()) {
+            val m = messages.optJSONObject(i) ?: continue
+            val raw = m.opt("content") ?: continue
+            if (raw !is JSONArray) continue
+            for (j in 0 until raw.length()) {
+                val part = raw.optJSONObject(j) ?: continue
+                when (part.optString("type").lowercase()) {
+                    "image_url" -> {
+                        val url = part.optJSONObject("image_url")?.optString("url").orEmpty()
+                        decodeImageSource(url)?.let { out.add(it) }
+                    }
+                    "file" -> {
+                        val f = part.optJSONObject("file") ?: continue
+                        val b64 = f.optString("file_data").ifEmpty { f.optString("data") }
+                        if (b64.isEmpty()) continue
+                        val name = f.optString("filename").ifEmpty { "file.png" }
+                        decodeBase64(b64)?.let {
+                            out.add(PendingImage(it, name, guessMime(name, it)))
+                        }
+                    }
+                }
+            }
+        }
+        return out.filter { it.bytes.size <= maxImageBytes }
+    }
+
+    /** data URI 直接解码；http(s) 链接先下载。 */
+    private fun decodeImageSource(url: String): PendingImage? {
+        if (url.isEmpty()) return null
+        return try {
+            when {
+                url.startsWith("data:") -> {
+                    val meta = url.substringAfter("data:").substringBefore(",")
+                    val mime = meta.substringBefore(";").ifEmpty { "image/png" }
+                    val bytes = decodeBase64(url.substringAfter(","))
+                        ?: return null
+                    PendingImage(bytes, "image.${mime.substringAfter("/")}", mime)
+                }
+                url.startsWith("http") -> {
+                    val req = okhttp3.Request.Builder().url(url).build()
+                    okhttp3.OkHttpClient().newCall(req).execute().use { resp ->
+                        if (resp.code != 200) {
+                            EventLog.log("HTTP", "图片下载失败 HTTP ${resp.code}：$url")
+                            return null
+                        }
+                        val bytes = resp.body?.bytes() ?: return null
+                        val mime = resp.header("Content-Type")
+                            ?.substringBefore(";")?.trim()?.ifEmpty { "image/png" } ?: "image/png"
+                        PendingImage(bytes, "image.${mime.substringAfter("/")}", mime)
+                    }
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            EventLog.log("HTTP", "图片解析失败：${e.message}")
+            null
+        }
+    }
+
+    private fun decodeBase64(s: String): ByteArray? = try {
+        android.util.Base64.decode(s.trim(), android.util.Base64.DEFAULT)
+    } catch (e: Exception) {
+        EventLog.log("HTTP", "base64 解码失败：${e.message}")
+        null
+    }
+
+    /** 按文件名后缀推断 MIME，兜底用 PNG 魔数判断。 */
+    private fun guessMime(name: String, bytes: ByteArray): String {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return when (ext) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "gif" -> "image/gif"
+            "webp" -> "image/webp"
+            else -> if (bytes.size > 8 && bytes[0] == 0x89.toByte() && bytes[1] == 0x50.toByte()) "image/png" else "image/jpeg"
+        }
+    }
+
+    /** 上传全部图片，返回可用的 file_id 列表。 */
+    private fun uploadImages(images: List<PendingImage>): List<String> {
+        val slot = ds.accountPool.pickAvailable()
+        return images.mapNotNull { img ->
+            ds.uploadFile(slot, img.bytes, img.filename, img.mime)
+        }
     }
 
     // ---------------- prompt 构造（全量上下文 + 工具协议） ----------------
@@ -248,7 +353,8 @@ class LocalServer(
         created: Long,
         toolSpecs: List<AgentToolBridge.ToolSpec>,
         toolNames: List<String>,
-        promptLen: Int
+        promptLen: Int,
+        refFileIds: List<String> = emptyList()
     ): Response {
         val channel = SseChannel()
         val writer = channel.writer()
@@ -277,7 +383,7 @@ class LocalServer(
 
         Thread {
             try {
-                ds.chat(prompt, thinking, search, model) { event ->
+                ds.chat(prompt, thinking, search, model, refFileIds) { event ->
                     when (event) {
                         is SseEvent.Thinking -> {
                             thinkLen.addAndGet(event.delta.length)
@@ -373,12 +479,13 @@ class LocalServer(
         chatId: String,
         created: Long,
         toolNames: List<String>,
-        promptLen: Int
+        promptLen: Int,
+        refFileIds: List<String> = emptyList()
     ): Response {
         val result: ChatResult = try {
             var text = StringBuilder()
             var think = StringBuilder()
-            ds.chat(prompt, thinking, search, model) { event ->
+                ds.chat(prompt, thinking, search, model, refFileIds) { event ->
                 when (event) {
                     is SseEvent.Thinking -> think.append(event.delta)
                     is SseEvent.Text -> text.append(event.delta)

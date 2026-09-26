@@ -16,7 +16,10 @@ class Settings(context: Context) {
         get() = prefs.getString(KEY_TOKEN, "") ?: ""
         set(value) = prefs.edit().putString(KEY_TOKEN, value.trim()).apply()
 
-    /** 当前使用的模型：deepseek-v4.1-flash（快速，默认）/ deepseek-v4-pro（专家·深度思考）。 */
+    /**
+     * 当前使用的模型。v2.1.0 起模型已整合：只有 deepseek-v4.1-flash 一个模型
+     * （深度思考 + 识图均为能力开关，不再靠换模型实现）。保留字段仅为兼容外部工具。
+     */
     var model: String
         get() {
             val m = prefs.getString(KEY_MODEL, ModelCatalog.DEFAULT) ?: ModelCatalog.DEFAULT
@@ -24,11 +27,7 @@ class Settings(context: Context) {
         }
         set(value) = prefs.edit().putString(KEY_MODEL, value).apply()
 
-    /** 是否为专业模式（兼容旧的 expertMode 语义）。 */
-    val expertMode: Boolean
-        get() = ModelCatalog.isPro(model)
-
-    /** 对话页「深度思考」开关（默认开启）。 */
+    /** 对话「深度思考」开关（默认开启，与模型无关的独立开关）。 */
     var thinkingEnabled: Boolean
         get() = prefs.getBoolean(KEY_THINKING, true)
         set(value) = prefs.edit().putBoolean(KEY_THINKING, value).apply()
@@ -74,10 +73,21 @@ class Settings(context: Context) {
 
     // ---------- Agent / 风控（v1.6.0） ----------
 
-    /** Agent 工具调用（tool_calls）仿射开关，默认开。 */
+    /**
+     * Agent 工具调用（tool_calls）仿射开关。
+     *
+     * v2.1.0 起**默认关闭**：不接入任何 Agent，不在 prompt 里注入工具协议文本，
+     * 请求保持「用户说了什么就发什么」。需要让 Operit 等 Agent 走 function calling
+     * 时，在设置里手动打开即可。
+     */
     var toolBridgeEnabled: Boolean
-        get() = prefs.getBoolean(KEY_TOOL_BRIDGE, true)
+        get() = prefs.getBoolean(KEY_TOOL_BRIDGE, false)
         set(value) = prefs.edit().putBoolean(KEY_TOOL_BRIDGE, value).apply()
+
+    /** 识图开关：开启后消息里的图片会上传到网页端并以 ref_file_ids 引用（默认开启）。 */
+    var visionEnabled: Boolean
+        get() = prefs.getBoolean(KEY_VISION, true)
+        set(value) = prefs.edit().putBoolean(KEY_VISION, value).apply()
 
     /** 滚动 60 分钟窗口内的最大请求数。 */
     var rateHourlyLimit: Int
@@ -117,6 +127,7 @@ class Settings(context: Context) {
         private const val KEY_PORT = "port"
         private const val KEY_LOGIN_DEBUG = "login_debug_panel"
         private const val KEY_THINKING = "thinking_enabled"
+        private const val KEY_VISION = "vision_enabled"
         private const val KEY_OPTIMIZE_API = "optimize_api_calls"
         private const val KEY_SESSION_ID = "last_session_id"
         private const val KEY_PARENT_MSG_ID = "last_parent_message_id"
