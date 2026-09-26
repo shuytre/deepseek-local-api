@@ -42,7 +42,25 @@ jobs:
       # （app/deepseek-release.keystore，由 build.gradle.kts 在配置期从 .b64 自动还原），
       # 保证各版本之间签名一致，可直接覆盖安装、保留数据。
       - name: Build signed APKs (debug + release)
-        run: ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease 2>&1 | tee /tmp/gradle-build.log
+
+      # 诊断辅助：构建失败时把 Gradle 日志尾部自动提交回仓库（ci-error.log），
+      # 便于在无法直接下载 Actions 日志的环境下定位错误。
+      - name: Report build failure log
+        if: failure()
+        run: |
+          if [ -f /tmp/gradle-build.log ]; then
+            tail -c 60000 /tmp/gradle-build.log > ci-error.log
+          else
+            echo "gradle log file missing" > ci-error.log
+          fi
+          git config user.name "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git add ci-error.log
+          git commit -m "ci: report build failure log (run ${{ github.run_number }})"
+          git push
 
       # 从 app/build.gradle.kts 读取版本号，供 Release tag 使用
       - name: Read app version
