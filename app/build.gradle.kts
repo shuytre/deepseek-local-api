@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -26,7 +28,7 @@ val appVersionName = "2.0.0"  // 语义化版本：主版本.功能版本.修复
 val keystoreFile = rootProject.file("app/deepseek-release.keystore")
 val keystoreB64 = rootProject.file("app/deepseek-release.keystore.b64")
 if (!keystoreFile.exists() && keystoreB64.exists()) {
-    keystoreFile.writeBytes(java.util.Base64.getDecoder().decode(keystoreB64.readText().trim()))
+    keystoreFile.writeBytes(Base64.getDecoder().decode(keystoreB64.readText().trim()))
 }
 val releaseStorePassword = "DeepSeekLocal_API_2026"
 val releaseKeyAlias = "deepseek"
