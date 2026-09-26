@@ -1,0 +1,80 @@
+name: Build Signed APK
+
+# 触发条件：
+#  1. push 到 main 分支（每次提交都做一次缓存编译 + 签名打包，产物在 Artifacts）
+#  2. push 版本标签（v*）：额外创建 GitHub Release 并附上签名 APK
+#  3. 手动触发（workflow_dispatch）
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # JDK 17（AGP 8.x 要求）。cache: gradle 会缓存 ~/.gradle（依赖 + wrapper 发行包），
+      # 首次构建后，后续构建直接命中缓存，大幅提速 —— 即「每次通过缓存进行编译」。
+      - name: Set up JDK 17 (with Gradle cache)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      # GitHub ubuntu-latest runner 已预装完整 Android SDK（platform 34/35 + build-tools，
+      # license 已预接受），无需额外安装；如缺组件 AGP 会自动按需下载。
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # gradle-wrapper.jar 以 base64 形式入库（git 平台不支持直接推二进制），此处还原
+      - name: Restore gradle-wrapper.jar
+        run: |
+          if [ -f gradle/wrapper/gradle-wrapper.jar.b64 ]; then
+            base64 -d gradle/wrapper/gradle-wrapper.jar.b64 > gradle/wrapper/gradle-wrapper.jar
+          fi
+
+      # release 与 debug 均使用项目内固化的同一把 keystore 签名
+      # （app/deepseek-release.keystore，由 build.gradle.kts 在配置期从 .b64 自动还原），
+      # 保证各版本之间签名一致，可直接覆盖安装、保留数据。
+      - name: Build signed APKs (debug + release)
+        run: ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease
+
+      # 从 app/build.gradle.kts 读取版本号，供 Release tag 使用
+      - name: Read app version
+        run: echo "VERSION=$(grep -oP 'appVersionName = \"\K[0-9.]+' app/build.gradle.kts)" >> "$GITHUB_ENV"
+
+      - name: List build outputs
+        run: ls -la app/build/outputs/apk/debug app/build/outputs/apk/release
+
+      # 每次构建的 APK 保存为 Actions Artifacts（无论是否打 tag）
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepSeekLocalAPI-APKs
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      # 触发方式（任一满足即发布）：
+      #   1. 推送 v* 标签（refs/tags/v*）
+      #   2. push 到 main 且 commit message 包含 [release] —— 自动以 v<版本号> 建 tag 并发布
+      # Release 会自动附上带版本号的签名 APK（DeepSeekLocalAPI-vX.Y.Z-release.apk）
+      - name: Create GitHub Release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || contains(github.event.head_commit.message, '[release]') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          files: |
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/apk/debug/*.apk
+          body: |
+            本 Release 由 GitHub Actions 自动构建并使用项目固化签名打包，可直接覆盖安装。
+            版本：v${{ env.VERSION }}（versionCode 见 app/build.gradle.kts）。
+            变更内容见 [CHANGELOG.md](../blob/main/CHANGELOG.md)。
+          generate_release_notes: true

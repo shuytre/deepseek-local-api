@@ -1,0 +1,15 @@
+# Gradle / Android Studio
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+
+# 本地构建产物（APK 由 GitHub Actions 统一打包发布）
+app/build/
+app/deepseek-release.keystore.b64
+gradle/wrapper/gradle-wrapper.jar.b64
