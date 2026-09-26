@@ -13,6 +13,12 @@ on:
       - 'ci-error.log'
   workflow_dispatch:
 
+# GITHUB_TOKEN 需要写权限（GitHub 新仓库默认只读）：
+#  - 失败日志回报步骤要把 ci-error.log push 回 main
+#  - Release 步骤要创建 tag 与 Release
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
