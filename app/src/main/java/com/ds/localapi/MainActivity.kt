@@ -178,7 +178,6 @@ class MainActivity : AppCompatActivity() {
 
         // 模型已整合：只有 DeepSeek V4.1 Flash 一个模型，隐藏旧「专业模式」入口，
         // 点击 chip 也不再切换模型（能力开关：深度思考 / 识图）。
-        homeBinding.chipFlash.setText(getString(R.string.model_unified))
         homeBinding.chipFlash.isSelected = true
         homeBinding.chipPro.visibility = android.view.View.GONE
         homeBinding.chipFlash.setOnClickListener { showModelInfoDialog() }
@@ -266,7 +265,6 @@ class MainActivity : AppCompatActivity() {
     private fun updateModelChips(model: String) {
         // 模型已整合，无论外部传什么模型名都归一到 V4.1 Flash
         settings.model = ModelCatalog.UNIFIED
-        homeBinding.chipFlash.setText(getString(R.string.model_unified))
         homeBinding.chipFlash.isSelected = true
         homeBinding.chipPro.visibility = android.view.View.GONE
         chatBinding.txtChatModel.text = getString(R.string.model_unified)
